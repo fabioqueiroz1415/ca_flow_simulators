@@ -96,6 +96,11 @@ def applyRules(EV, height, n, m):
                 continue
 
             # ---- Regra 3: Aumento de nível ----
+            #CONDIÇÃO: CÉLULA CENTRAL É TEM MESMA ALTURA (HEIGHT) QUE UM, DOIS OU TRÊS VIZINHOS
+            # E É MAIS BAIXA QUE OUTRAS
+            #PROCEDIMENTO: SE HA EV[I][J], INCREMENTA A ALTURA DA CÉLULA CENTRAL
+            #  POR UM increment_constant. O VALOR RESTANTE DE EV É DISTRIBUÍDO
+            #  PARA AS CÉLULAS DE MESMA ALTURA.  
             same_level = [(x,y) for x,y in neighbors  
                          if abs(height_prev[x,y] - current_height) < 0.001] # vizinhos no mesmo nível
             non_same_level = [(x,y) for x,y in neighbors if (x,y) not in same_level]

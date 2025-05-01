@@ -2,6 +2,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import rasterio
 import os
+import cv2
+
+def bicubic_interpolation_opencv(image, scale_factor=10):
+    return cv2.resize(
+        image, 
+        None, 
+        fx=scale_factor, 
+        fy=scale_factor, 
+        interpolation=cv2.INTER_CUBIC
+    )
 
 def extract_elev_Tiff(filepath_tiff):
     with rasterio.open(filepath_tiff) as src:
@@ -26,7 +36,7 @@ class DynamicPlot:
         self.ax_elev.set_title("Relevo Original")
         
         # Gráfico da água
-        self.cax_water = self.ax_water.matshow(water_matrix, cmap=cmap_water, vmin=0, vmax=50)
+        self.cax_water = self.ax_water.matshow(water_matrix, cmap=cmap_water, vmin=0, vmax=10)
         plt.colorbar(self.cax_water, ax=self.ax_water, label="Água")
         self.ax_water.set_title("Água - Iteração 1")
         
@@ -39,7 +49,7 @@ class DynamicPlot:
         """Atualiza apenas o gráfico da água."""
         self.iteration += 1
         self.cax_water.set_array(new_water_matrix)
-        self.cax_water.set_clim(vmin=0, vmax=50)  # Mantém a escala fixa
+        self.cax_water.set_clim(vmin=0, vmax=10)  # Mantém a escala fixa
         self.ax_water.set_title(f"Água - Iteração {self.iteration}")
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -71,8 +81,13 @@ def applyRules(EV, height, n, m):
             # Se não há volume excedente, não faz nada
             if current_EV < eps:
                 continue # não faz nada e continua na proxima iteração dos laços fo
-                        # ---- Regra 1: Equalização com vizinho mais baixo ----
-
+            
+            # ---- Regra 1: Equalização com vizinho mais baixo ----
+            # SE A ALTURA DA CÉLULA CENTRAL É MENOR QUE A DE TODOS OS VIZINHOS:
+            # TRANSFERE DO VOLUME EXCEDENTE PARA A CELULA CENTRAL
+            # A QUANTIDADE TRANSFERIDA É REGULADA PELA DIFERENÇA DE ALTURA
+            # ENTRE O VIZINHO MAIS BAIXO E A CÉLULA CENTRAL, NÃO PODENDO
+            # SER MAIOR QUE O VOLUME EXCEDENTE. 
             neighbors = [(i-1,j), (i+1,j), (i,j-1), (i,j+1)]
             neighbor_heights = [height_prev[x,y] for x,y in neighbors]
             min_height = min(neighbor_heights)
@@ -168,30 +183,37 @@ def applyRules(EV, height, n, m):
     
     return new_EV, new_height
 
+
+
 def main():
-    n_iterations = 2000
+    n_iterations = 200
+    scale_factor = 30
 
     output_dir = "./simulation_frames"
     
     # Cria diretório para salvar os frames
     os.makedirs(output_dir, exist_ok=True)
 
-
     # Carregar e preparar dados
     height_orig = extract_elev_Tiff('./elevacao_catalao.tif')
-    n, m = height_orig.shape
+
 
     max_height = np.max(height_orig)
     height = np.where(height_orig < 0, max_height, height_orig)
+    height = bicubic_interpolation_opencv(height, scale_factor=scale_factor)
+
+
 
     height_init = height.copy()
 
     # Dimensoes de matriz
-    n, m = height.shape
+    n, m = height_orig.shape
     
     # Definir região inicial de água
-    EV = np.random.rand(n, m)*10.0 # água aleatória até 10 por célula 
+    EV = np.random.rand(n, m)*10.0 # Chuva aleatória até 10 por célula 
     EV = np.where(height_orig < 0, 0, EV) # Colocando água apenas na área da cidade de catalão
+    EV = bicubic_interpolation_opencv(EV, scale_factor=scale_factor)
+
 
     # Inicializar plot
     plotter = DynamicPlot(height_init, EV, cmap_elev="viridis", cmap_water="Blues")
@@ -199,14 +221,29 @@ def main():
     total_inicial = np.sum(EV) + np.sum(height - height_init)
     print(f"Total inicial: {total_inicial:.8f}")
 
+    n, m = height.shape
+
     for _ in range(n_iterations):
         EV, height = applyRules(EV, height, n, m)
         
         # Verificação rigorosa de conservação de massa
-        total_atual = np.sum(EV) + np.sum(height - height_init)
-        if not np.isclose(total_atual, total_inicial, atol=1e-6):
-            print(f"ERRO: Perda de {total_inicial - total_atual:.10f} na iteração {_+1}")
-            break
+        #total_atual = np.sum(EV) + np.sum(height - height_init)
+        #if not np.isclose(total_atual, total_inicial, atol=1e-6):
+        #    print(f"ERRO: Perda de {total_inicial - total_atual:.10f} na iteração {_+1}")
+        #    break
+
+        #EV_inc = np.random.rand(n, m)*1.0 # Incremento de chuva aleatória até 1 por célula 
+        #EV_inc = np.where(height_orig < 0, 0, EV) # Considerando chuva apenas na área da cidade de catalão
+        #EV += EV_inc # Incrementa a chuva no EV
+
+        
+        # Simula saída de água nas bordas - canal aberto 
+        EV[[0, -1], :] = EV[:, [0, -1]] = 0.0
+        height[[0, -1], :] = height[:, [0, -1]] = 0.0
+
+
+        # Simula mais chuva
+
         if abs(EV.sum()) < 1e-6:
             print("Água esgotada, encerrando simulação.")
             break

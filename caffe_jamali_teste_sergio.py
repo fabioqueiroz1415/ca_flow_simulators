@@ -1,21 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import rasterio
 import os
-import cv2
-
-def bicubic_interpolation_opencv(image, scale_factor=10):
-    return cv2.resize(
-        image, 
-        None, 
-        fx=scale_factor, 
-        fy=scale_factor, 
-        interpolation=cv2.INTER_CUBIC
-    )
-
-def extract_elev_Tiff(filepath_tiff):
-    with rasterio.open(filepath_tiff) as src:
-        return src.read(1).astype(np.float64)  # Já converte para float
+from functions import bicubic_interpolation_opencv, extract_elev_Tiff
 
 class DynamicPlot:
     def __init__(self, elevation_matrix, water_matrix, cmap_elev="terrain", cmap_water="Blues"):
@@ -182,86 +168,3 @@ def applyRules(EV, height, n, m):
         new_EV += correction  # Distribui diferença uniformemente
     
     return new_EV, new_height
-
-
-
-def main():
-    n_iterations = 2000
-    scale_factor = 1
-
-    output_dir = "./simulation_frames"
-    
-    # Cria diretório para salvar os frames
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Carregar e preparar dados
-    height_orig = extract_elev_Tiff('./elevacao_catalao.tif')
-
-
-    max_height = np.max(height_orig)
-    height = np.where(height_orig < 0, max_height, height_orig)
-    #height = bicubic_interpolation_opencv(height, scale_factor=scale_factor)
-
-    #height_orig = np.zeros((100, 100))  # Exemplo de matriz de elevação
-    #height = height_orig.copy()
-    #nx, ny = height.shape
-
-    #EV = np.zeros((nx, ny))*0.0  # Inicialização da água
-    #EV[nx//2-5:nx//2+5, ny//2-5:ny//2+5] = 100.0  # Região central com água
-
-
-    height_init = height.copy()
-
-    # Dimensoes de matriz
-    n, m = height_orig.shape
-    
-    # Definir região inicial de água
-    EV = np.random.rand(n, m)*0.4 # Chuva pancada aleatória até 40mm por célula
-    EV = np.where(height_orig < 0, 0, EV) # Colocando água apenas na área da cidade de catalão
-    #EV = bicubic_interpolation_opencv(EV, scale_factor=scale_factor)
-
-
-    # Inicializar plot
-    plotter = DynamicPlot(height_init, EV, cmap_elev="viridis", cmap_water="Blues")
-
-    total_inicial = np.sum(EV) + np.sum(height - height_init)
-    print(f"Total inicial: {total_inicial:.8f}")
-
-    
-    for _ in range(n_iterations):
-        EV, height = applyRules(EV, height, n, m)
-        
-        # Verificação rigorosa de conservação de massa
-        #total_atual = np.sum(EV) + np.sum(height - height_init)
-        #if not np.isclose(total_atual, total_inicial, atol=1e-6):
-        #    print(f"ERRO: Perda de {total_inicial - total_atual:.10f} na iteração {_+1}")
-        #    break
-        
-        # Simula mais chuva
-
-        EV_inc = np.random.rand(n, m)*0.1 # Incremento de chuva aleatória  
-        EV_inc = np.where(height_orig < 0, 0, EV_inc) # Considerando chuva apenas na área da cidade de catalão
-        EV += EV_inc # Incrementa a chuva no EV
-
-        #EV_inc = np.zeros((nx, ny))*0.0  # Inicialização da água
-        #EV_inc[nx//2-5:nx//2+5, ny//2-5:ny//2+5] = 1.0  # Região central com água
-        #EV += EV_inc
-
-        
-
-        if abs(EV.sum()) < 1e-6:
-            print("Água esgotada, encerrando simulação.")
-            break
-        print(f"Iteração {_+1}: EV: {np.sum(EV):.8f}, Agua acomodada: {np.sum(height - height_init):.8f}")
-        
-        plotter.update(EV + height - height_init)
-        frame_path = os.path.join(output_dir, f"frame_{_+1:06d}.png")
-        plotter.fig.savefig(frame_path, dpi=200, bbox_inches='tight')
-
-        plt.pause(0.00001)
-
-    print("Simulação concluída com conservação de massa!")
-
-
-if __name__ == '__main__':
-    main()

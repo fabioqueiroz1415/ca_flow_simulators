@@ -8,7 +8,7 @@ from functions import bicubic_interpolation_opencv, extract_elev_Tiff
 
 
 def main():
-    n_iterations = 2000
+    n_iterations = 500
 
     rules = [cj.applyRules, cj_sergio.applyRules]
     rule_names = ["caffe_jamali", "caffe_jamali_sergio"]

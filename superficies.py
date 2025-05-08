@@ -10,3 +10,6 @@ def paraboloide(size=350, scale=1.0):
     # Fórmula do paraboloide
     Z = scale * (X**2 + Y**2)
     return Z
+
+def s2():
+    pass
